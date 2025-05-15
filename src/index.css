@@ -4,6 +4,7 @@
 @tailwind utilities;
 
 @layer base {
+  /* ... keep existing code (CSS variables for :root and .dark) ... */
   :root {
     --background: 0 0% 100%;
     --foreground: 222.2 84% 4.9%;
@@ -79,25 +80,27 @@
 
 @layer utilities {
   .animated-blob {
-    animation: morph 10s ease-in-out infinite, gradientCycle 18s ease-in-out infinite;
-    transition: transform 0.3s ease-in-out;
+    /* Slower morph and gradient cycle */
+    animation: morph 20s ease-in-out infinite, gradientCycle 30s ease-in-out infinite;
+    transition: transform 0.5s ease-in-out; /* Slightly slower transform */
   }
 
   .pulsating-blob {
-    animation: morph 10s ease-in-out infinite, gradientCycle 18s ease-in-out infinite, pulse 1.5s ease-in-out infinite;
+    /* Slower morph and gradient cycle, pulse remains relatively similar for responsiveness */
+    animation: morph 20s ease-in-out infinite, gradientCycle 30s ease-in-out infinite, pulse 1.5s ease-in-out infinite;
   }
 
   @keyframes morph {
     0%, 100% { border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%; }
     25% { border-radius: 30% 60% 70% 40% / 50% 60% 30% 60%; }
-    50% { border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%; } /* Simpler middle state */
+    50% { border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%; }
     75% { border-radius: 40% 60% 70% 30% / 50% 60% 30% 50%; }
   }
 
   @keyframes gradientCycle {
-    0%, 100% { background-image: linear-gradient(to right, #ee9ca7, #ffdde1); } /* Pinkish */
-    33% { background-image: linear-gradient(60deg, #abecd6 0%, #fbed96 100%); } /* Greenish-Yellow */
-    66% { background-image: linear-gradient(to top, #accbee 0%, #e7f0fd 100%); } /* Bluish */
+    0%, 100% { background-image: linear-gradient(to right, #E0C3FC, #8EC5FC); } /* Soft Lavender to Soft Blue */
+    33% { background-image: linear-gradient(60deg, #A1C4FD 0%, #C2E9FB 100%); } /* Soft Blue to Lighter Blue/Greenish */
+    66% { background-image: linear-gradient(to top, #FFC0CB 0%, #FAD0C4 100%); } /* Soft Pink to Soft Peach */
   }
 
   @keyframes pulse {

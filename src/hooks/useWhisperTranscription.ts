@@ -1,10 +1,9 @@
-
 import { useState, useRef } from 'react';
 import { toast } from "@/hooks/use-toast";
 
 const WHISPER_API_URL = 'https://api.openai.com/v1/audio/transcriptions';
 
-export const useWhisperTranscription = (apiKey: string) => {
+export const useWhisperTranscription = (apiKey: string, speak?: (text: string) => void) => {
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [transcription, setTranscription] = useState('');
@@ -37,21 +36,19 @@ export const useWhisperTranscription = (apiKey: string) => {
       mediaRecorderRef.current.onstop = async () => {
         setIsProcessing(true);
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        // const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' }); // Also common
+        
         if (audioBlob.size === 0) {
             console.error("Audio blob is empty.");
             setError("No audio was recorded. Please check your microphone.");
             setIsProcessing(false);
-            setIsRecording(false); // Ensure isRecording is reset
+            setIsRecording(false); 
             toast({ title: "Recording Error", description: "No audio data captured.", variant: "destructive" });
             return;
         }
         
         const formData = new FormData();
         formData.append('file', audioBlob, 'recording.webm');
-        // formData.append('file', audioBlob, 'recording.wav');
         formData.append('model', 'whisper-1');
-        // formData.append('language', 'en'); // Optional: specify language
 
         try {
           const response = await fetch(WHISPER_API_URL, {
@@ -68,8 +65,13 @@ export const useWhisperTranscription = (apiKey: string) => {
             throw new Error(data.error?.message || 'Transcription failed');
           }
           
-          setTranscription(data.text);
+          const transcribedText = data.text;
+          setTranscription(transcribedText);
           toast({ title: "Transcription Complete!", description: "Your speech has been transcribed."});
+
+          if (speak && transcribedText) {
+            speak(transcribedText); // Speak the transcribed text
+          }
 
         } catch (err: any) {
           console.error('Whisper API error:', err);
@@ -77,7 +79,6 @@ export const useWhisperTranscription = (apiKey: string) => {
           toast({ title: "Transcription Error", description: err.message || 'Failed to transcribe audio.', variant: "destructive" });
         } finally {
           setIsProcessing(false);
-          // Stop media tracks to turn off microphone indicator
           stream.getTracks().forEach(track => track.stop());
         }
       };
@@ -88,7 +89,7 @@ export const useWhisperTranscription = (apiKey: string) => {
       console.error('Error starting recording:', err);
       setError('Failed to start recording. Please check microphone permissions.');
       toast({ title: "Recording Error", description: "Could not access microphone. Please check permissions.", variant: "destructive" });
-      setIsRecording(false); // Ensure isRecording is reset
+      setIsRecording(false);
     }
   };
 
@@ -96,7 +97,6 @@ export const useWhisperTranscription = (apiKey: string) => {
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop();
       setIsRecording(false); 
-      // Note: actual processing happens in onstop
     }
   };
 
