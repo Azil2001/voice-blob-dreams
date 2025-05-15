@@ -1,16 +1,46 @@
-import { useState, useRef } from 'react';
+
+import { useState, useRef, useCallback } from 'react';
 import { toast } from "@/hooks/use-toast";
 
 const WHISPER_API_URL = 'https://api.openai.com/v1/audio/transcriptions';
 
-export const useWhisperTranscription = (apiKey: string, speak?: (text: string) => void) => {
+export const useWhisperTranscription = (
+  apiKey: string, 
+  onTranscriptionComplete?: (text: string) => void,
+  onHumanSpeechDetected?: () => void
+) => {
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [transcription, setTranscription] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [isListeningMode, setIsListeningMode] = useState(false);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+  const streamRef = useRef<MediaStream | null>(null);
+  const silenceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Function to start continuous listening mode
+  const startListeningMode = useCallback(async () => {
+    if (!apiKey) {
+      setError('OpenAI API key is not set.');
+      toast({ title: "API Key Missing", description: "Please set your OpenAI API key first.", variant: "destructive" });
+      return;
+    }
+
+    setIsListeningMode(true);
+    await startRecording();
+  }, [apiKey]);
+
+  // Function to stop continuous listening mode
+  const stopListeningMode = useCallback(() => {
+    setIsListeningMode(false);
+    stopRecording();
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+  }, []);
 
   const startRecording = async () => {
     if (!apiKey) {
@@ -20,12 +50,17 @@ export const useWhisperTranscription = (apiKey: string, speak?: (text: string) =
     }
     if (isRecording) return;
 
-    setTranscription('');
     setError(null);
-    setIsProcessing(false);
 
     try {
+      // Notify that human speech is detected
+      if (onHumanSpeechDetected) {
+        onHumanSpeechDetected();
+      }
+      
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      
       mediaRecorderRef.current = new MediaRecorder(stream);
       audioChunksRef.current = [];
 
@@ -67,10 +102,10 @@ export const useWhisperTranscription = (apiKey: string, speak?: (text: string) =
           
           const transcribedText = data.text;
           setTranscription(transcribedText);
-          toast({ title: "Transcription Complete!", description: "Your speech has been transcribed."});
-
-          if (speak && transcribedText) {
-            speak(transcribedText); // Speak the transcribed text
+          
+          // Call the callback with the transcribed text
+          if (onTranscriptionComplete && transcribedText) {
+            onTranscriptionComplete(transcribedText);
           }
 
         } catch (err: any) {
@@ -79,17 +114,37 @@ export const useWhisperTranscription = (apiKey: string, speak?: (text: string) =
           toast({ title: "Transcription Error", description: err.message || 'Failed to transcribe audio.', variant: "destructive" });
         } finally {
           setIsProcessing(false);
-          stream.getTracks().forEach(track => track.stop());
+          
+          // In listening mode, restart recording after processing
+          if (isListeningMode) {
+            startRecording();
+          } else {
+            if (streamRef.current) {
+              streamRef.current.getTracks().forEach(track => track.stop());
+              streamRef.current = null;
+            }
+          }
         }
       };
 
+      // Start with a 3-second recording segment
       mediaRecorderRef.current.start();
       setIsRecording(true);
+      
+      // Set a timeout to stop recording after a short period
+      setTimeout(() => {
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+          mediaRecorderRef.current.stop();
+          setIsRecording(false); 
+        }
+      }, 5000); // 5-second recording segments
+
     } catch (err) {
       console.error('Error starting recording:', err);
       setError('Failed to start recording. Please check microphone permissions.');
       toast({ title: "Recording Error", description: "Could not access microphone. Please check permissions.", variant: "destructive" });
       setIsRecording(false);
+      setIsListeningMode(false);
     }
   };
 
@@ -107,5 +162,8 @@ export const useWhisperTranscription = (apiKey: string, speak?: (text: string) =
     error,
     startRecording,
     stopRecording,
+    isListeningMode,
+    startListeningMode,
+    stopListeningMode
   };
 };

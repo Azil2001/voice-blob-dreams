@@ -1,24 +1,56 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import AnimatedBlob from '@/components/AnimatedBlob';
 import ApiKeyInput from '@/components/ApiKeyInput';
 import VoiceControls from '@/components/VoiceControls';
 import { useWhisperTranscription } from '@/hooks/useWhisperTranscription';
-import { useTextToSpeech } from '@/hooks/useTextToSpeech'; // Import the new hook
+import { useTextToSpeech } from '@/hooks/useTextToSpeech';
+import { useGPT4o } from '@/hooks/useGPT4o';
+import { toast } from "@/hooks/use-toast";
 
 const Index = () => {
   const [apiKey, setApiKey] = useState('');
-  const { speak, isSpeaking } = useTextToSpeech(); // Use the TTS hook
+  const [showApiKeyInput, setShowApiKeyInput] = useState(true);
+  const [aiResponse, setAiResponse] = useState('');
+  const [conversationActive, setConversationActive] = useState(false);
+
+  const { speak, cancel, pauseSpeech, resumeSpeech, isSpeaking, isPaused } = useTextToSpeech();
+  const { generateResponse, isProcessing: isGeneratingResponse } = useGPT4o(apiKey);
+
+  // Handle human speech detection - pause the AI response
+  const handleHumanSpeechDetected = useCallback(() => {
+    if (isSpeaking) {
+      pauseSpeech();
+    }
+  }, [isSpeaking, pauseSpeech]);
+
+  // Handle completed transcription - generate AI response
+  const handleTranscriptionComplete = useCallback(async (text: string) => {
+    if (text && conversationActive) {
+      const response = await generateResponse(text);
+      if (response) {
+        setAiResponse(response);
+        speak(response);
+        resumeSpeech(5000); // Resume after 5 seconds if was paused
+      }
+    }
+  }, [generateResponse, speak, resumeSpeech, conversationActive]);
+
   const {
     isRecording,
-    isProcessing,
+    isProcessing: isTranscribing,
     transcription,
     error,
-    startRecording,
-    stopRecording,
-  } = useWhisperTranscription(apiKey, speak); // Pass speak function to Whisper hook
+    startListeningMode,
+    stopListeningMode,
+    isListeningMode
+  } = useWhisperTranscription(
+    apiKey, 
+    handleTranscriptionComplete,
+    handleHumanSpeechDetected
+  );
 
-  const [showApiKeyInput, setShowApiKeyInput] = useState(true);
+  const isProcessing = isTranscribing || isGeneratingResponse;
 
   useEffect(() => {
     // Check localStorage for API key on initial load
@@ -34,6 +66,36 @@ const Index = () => {
     setShowApiKeyInput(false); // Hide input after key is set
   };
 
+  const startConversation = async () => {
+    if (!apiKey) {
+      toast({ 
+        title: "API Key Missing", 
+        description: "Please set your OpenAI API key first.", 
+        variant: "destructive" 
+      });
+      return;
+    }
+
+    setConversationActive(true);
+    toast({ 
+      title: "Conversation Started", 
+      description: "Start speaking. The AI will respond after you finish a sentence." 
+    });
+    
+    // Start in listening mode
+    await startListeningMode();
+  };
+
+  const stopConversation = () => {
+    setConversationActive(false);
+    stopListeningMode();
+    cancel(); // Stop any ongoing speech
+    toast({ 
+      title: "Conversation Ended", 
+      description: "Thanks for chatting!" 
+    });
+  };
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-background p-4 text-center overflow-hidden">
       <header className="mb-6">
@@ -41,7 +103,7 @@ const Index = () => {
           Interactive Voice Blob
         </h1>
         <p className="text-md md:text-lg text-muted-foreground mt-2">
-          Speak to the blob and see your words appear!
+          Start a conversation with the AI-powered blob!
         </p>
       </header>
 
@@ -51,17 +113,21 @@ const Index = () => {
 
       <VoiceControls
         isRecording={isRecording}
-        isProcessing={isProcessing || isSpeaking} // Consider TTS speaking as part of processing
-        startRecording={startRecording}
-        stopRecording={stopRecording}
+        isProcessing={isProcessing}
+        startConversation={startConversation}
+        stopConversation={stopConversation}
         transcription={transcription}
         error={error}
         hasApiKey={!!apiKey}
+        isSpeaking={isSpeaking}
+        isPaused={isPaused}
+        isListeningMode={isListeningMode}
+        aiResponse={aiResponse}
       />
       
       <footer className="mt-auto py-4">
         <p className="text-xs text-muted-foreground">
-          Powered by OpenAI Whisper & Lovable.
+          Powered by OpenAI Whisper, GPT-4o & Lovable.
         </p>
       </footer>
     </div>
